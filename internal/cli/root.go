@@ -1429,6 +1429,19 @@ func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 			merged.EndpointTemplateEnvOverrides[placeholder] = override
 			overrideSource[placeholder] = s
 		}
+		for _, placeholder := range sortedStringMapKeys(s.EndpointTemplateVarDefaults) {
+			value := s.EndpointTemplateVarDefaults[placeholder]
+			if strings.TrimSpace(placeholder) == "" {
+				continue
+			}
+			if _, taken := merged.EndpointTemplateVarDefaults[placeholder]; taken {
+				continue
+			}
+			if merged.EndpointTemplateVarDefaults == nil {
+				merged.EndpointTemplateVarDefaults = map[string]string{}
+			}
+			merged.EndpointTemplateVarDefaults[placeholder] = value
+		}
 		for _, pathParam := range sortedStringMapKeys(s.EndpointPathParamDefaults) {
 			value := s.EndpointPathParamDefaults[pathParam]
 			if strings.TrimSpace(pathParam) == "" {

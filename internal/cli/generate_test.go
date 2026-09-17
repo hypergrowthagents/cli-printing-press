@@ -2526,15 +2526,19 @@ func TestMergeSpecsUnionsEndpointTemplateVarsAndEnvOverrides(t *testing.T) {
 
 	primary := tenantTemplateSpec("jobs", "ST_TENANT_ID")
 	primary.EndpointPathParamDefaults = map[string]string{"userId": "me"}
+	primary.EndpointTemplateVarDefaults = map[string]string{"version": "v1"}
 	secondary := tenantTemplateSpec("crm", "ST_TENANT_ID")
 	secondary.EndpointTemplateVars = []string{"tenant", "version"}
 	secondary.EndpointTemplateEnvOverrides["version"] = "ST_API_VERSION"
+	secondary.EndpointPathParamDefaults = map[string]string{"userId": "self", "orgId": "default"}
+	secondary.EndpointTemplateVarDefaults = map[string]string{"version": "v2", "region": "us"}
 
 	merged := mergeSpecs([]*spec.APISpec{primary, secondary}, "combo")
 
 	assert.Equal(t, []string{"tenant", "version"}, merged.EndpointTemplateVars)
 	assert.Equal(t, map[string]string{"tenant": "ST_TENANT_ID", "version": "ST_API_VERSION"}, merged.EndpointTemplateEnvOverrides)
-	assert.Equal(t, map[string]string{"userId": "me"}, merged.EndpointPathParamDefaults)
+	assert.Equal(t, map[string]string{"userId": "me", "orgId": "default"}, merged.EndpointPathParamDefaults, "first spec's path-param default wins; new keys still merge")
+	assert.Equal(t, map[string]string{"version": "v1", "region": "us"}, merged.EndpointTemplateVarDefaults, "first spec's template-var default wins; new keys still merge")
 	assert.Empty(t, merged.GlobalPathTemplateVars)
 	assert.Equal(t, "ST_TENANT_ID", merged.EndpointTemplateEnvName("tenant"))
 }
