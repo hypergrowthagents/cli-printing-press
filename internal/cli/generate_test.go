@@ -2535,7 +2535,7 @@ func TestMergeSpecsUnionsEndpointTemplateVarsAndEnvOverrides(t *testing.T) {
 	assert.Equal(t, []string{"tenant", "version"}, merged.EndpointTemplateVars)
 	assert.Equal(t, map[string]string{"tenant": "ST_TENANT_ID", "version": "ST_API_VERSION"}, merged.EndpointTemplateEnvOverrides)
 	assert.Equal(t, map[string]string{"userId": "me"}, merged.EndpointPathParamDefaults)
-	assert.Equal(t, []string{"tenant"}, merged.GlobalPathTemplateVars)
+	assert.Empty(t, merged.GlobalPathTemplateVars)
 	assert.Equal(t, "ST_TENANT_ID", merged.EndpointTemplateEnvName("tenant"))
 }
 
@@ -2571,7 +2571,36 @@ func TestMergeSpecsKeepsTemplateBindingWhenLaterSpecOmitsIt(t *testing.T) {
 
 	assert.Equal(t, []string{"tenant"}, merged.EndpointTemplateVars)
 	assert.Equal(t, map[string]string{"tenant": "ST_TENANT_ID"}, merged.EndpointTemplateEnvOverrides)
-	assert.Equal(t, []string{"tenant"}, merged.GlobalPathTemplateVars)
+	assert.Empty(t, merged.GlobalPathTemplateVars)
+}
+
+func TestMergeSpecsRederivesGlobalPathTemplateVarsFromMergedEndpoints(t *testing.T) {
+	t.Parallel()
+
+	tenantScoped := tenantTemplateSpec("jobs", "ST_TENANT_ID")
+	untemplated := &spec.APISpec{
+		Name:    "settings",
+		Version: "0.1.0",
+		BaseURL: "https://api.example.com",
+		Resources: map[string]spec.Resource{
+			"settings": {Endpoints: map[string]spec.Endpoint{
+				"a": {Method: "GET", Path: "/settings/a"},
+				"b": {Method: "GET", Path: "/settings/b"},
+				"c": {Method: "GET", Path: "/settings/c"},
+				"d": {Method: "GET", Path: "/settings/d"},
+			}},
+		},
+		Types: map[string]spec.TypeDef{},
+	}
+
+	merged := mergeSpecs([]*spec.APISpec{tenantScoped, untemplated}, "combo")
+	require.Empty(t, merged.GlobalPathTemplateVars)
+	merged.PromoteGlobalPathTemplateVars()
+	assert.Empty(t, merged.GlobalPathTemplateVars, "{tenant} covers 1 of 5 merged endpoints and must not become a root flag")
+
+	covered := mergeSpecs([]*spec.APISpec{tenantScoped, tenantTemplateSpec("crm", "ST_TENANT_ID")}, "combo")
+	covered.PromoteGlobalPathTemplateVars()
+	assert.Equal(t, []string{"tenant"}, covered.GlobalPathTemplateVars)
 }
 
 func TestMergeSpecsScopesConflictingRequiredHeadersToTheirSourceEndpoints(t *testing.T) {

@@ -1399,7 +1399,6 @@ func mergeSpecsWithOptions(specs []*spec.APISpec, name string, opts mergeSpecOpt
 // env override for a placeholder wins so the merge stays deterministic.
 func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 	seenVars := map[string]struct{}{}
-	seenGlobals := map[string]struct{}{}
 	overrideSource := map[string]*spec.APISpec{}
 	for _, s := range specs {
 		for _, name := range s.EndpointTemplateVars {
@@ -1443,21 +1442,15 @@ func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 			}
 			merged.EndpointPathParamDefaults[pathParam] = value
 		}
-		for _, name := range s.GlobalPathTemplateVars {
-			if strings.TrimSpace(name) == "" {
-				continue
-			}
-			if _, dup := seenGlobals[name]; dup {
-				continue
-			}
-			seenGlobals[name] = struct{}{}
-			merged.GlobalPathTemplateVars = append(merged.GlobalPathTemplateVars, name)
-		}
 	}
 	// The merged spec has its own name and auth model, so an override that was
 	// benign per-spec can now collide with a credential env var.
 	merged.DropCollidingEndpointTemplateEnvOverrides()
-	sort.Strings(merged.GlobalPathTemplateVars)
+	// Global promotion keeps whatever is already listed without re-checking the
+	// coverage threshold, so a placeholder that is global in one source spec
+	// would force a root flag on every merged command. Leave the list empty and
+	// let PromoteGlobalPathTemplateVars recompute it from the merged endpoints.
+	merged.GlobalPathTemplateVars = nil
 }
 
 // sortedStringMapKeys orders map iteration so multi-spec merges emit stable
