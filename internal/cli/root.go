@@ -1429,32 +1429,8 @@ func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 			merged.EndpointTemplateEnvOverrides[placeholder] = override
 			overrideSource[placeholder] = s
 		}
-		for _, placeholder := range sortedStringMapKeys(s.EndpointTemplateVarDefaults) {
-			value := s.EndpointTemplateVarDefaults[placeholder]
-			if strings.TrimSpace(placeholder) == "" {
-				continue
-			}
-			if _, taken := merged.EndpointTemplateVarDefaults[placeholder]; taken {
-				continue
-			}
-			if merged.EndpointTemplateVarDefaults == nil {
-				merged.EndpointTemplateVarDefaults = map[string]string{}
-			}
-			merged.EndpointTemplateVarDefaults[placeholder] = value
-		}
-		for _, pathParam := range sortedStringMapKeys(s.EndpointPathParamDefaults) {
-			value := s.EndpointPathParamDefaults[pathParam]
-			if strings.TrimSpace(pathParam) == "" {
-				continue
-			}
-			if _, taken := merged.EndpointPathParamDefaults[pathParam]; taken {
-				continue
-			}
-			if merged.EndpointPathParamDefaults == nil {
-				merged.EndpointPathParamDefaults = map[string]string{}
-			}
-			merged.EndpointPathParamDefaults[pathParam] = value
-		}
+		mergeFirstWins(&merged.EndpointTemplateVarDefaults, s.EndpointTemplateVarDefaults)
+		mergeFirstWins(&merged.EndpointPathParamDefaults, s.EndpointPathParamDefaults)
 	}
 	// The merged spec has its own name and auth model, so an override that was
 	// benign per-spec can now collide with a credential env var.
@@ -1464,6 +1440,23 @@ func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 	// would force a root flag on every merged command. Leave the list empty and
 	// let PromoteGlobalPathTemplateVars recompute it from the merged endpoints.
 	merged.GlobalPathTemplateVars = nil
+}
+
+// mergeFirstWins copies src into *dst, skipping blank keys and keys *dst already
+// holds, so the first spec to declare a value keeps it across the merge.
+func mergeFirstWins(dst *map[string]string, src map[string]string) {
+	for _, key := range sortedStringMapKeys(src) {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		if _, taken := (*dst)[key]; taken {
+			continue
+		}
+		if *dst == nil {
+			*dst = map[string]string{}
+		}
+		(*dst)[key] = src[key]
+	}
 }
 
 // sortedStringMapKeys orders map iteration so multi-spec merges emit stable
