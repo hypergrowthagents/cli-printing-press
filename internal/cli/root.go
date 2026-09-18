@@ -1391,12 +1391,11 @@ func mergeSpecsWithOptions(specs []*spec.APISpec, name string, opts mergeSpecOpt
 	return merged
 }
 
-// applyMultiSpecTemplateVars carries the endpoint template-variable bindings
-// of every contributing spec onto the merged spec. Without this the merged
-// spec loses each source's {placeholder} wiring, so a per-tenant path segment
-// degrades into a positional argument on every command instead of a root flag
-// backed by the declared env var. Bindings union; the first spec to declare an
-// env override for a placeholder wins so the merge stays deterministic.
+// applyMultiSpecTemplateVars preserves template-variable bindings when the
+// merge reconstructs the spec. Without this the merged spec loses each
+// source's {placeholder} wiring, so a per-tenant path segment degrades into
+// a positional argument on every command instead of a root flag backed by
+// the declared env var.
 func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 	seenVars := map[string]struct{}{}
 	overrideSource := map[string]*spec.APISpec{}
@@ -1442,8 +1441,8 @@ func applyMultiSpecTemplateVars(merged *spec.APISpec, specs []*spec.APISpec) {
 	merged.GlobalPathTemplateVars = nil
 }
 
-// mergeFirstWins copies src into *dst, skipping blank keys and keys *dst already
-// holds, so the first spec to declare a value keeps it across the merge.
+// mergeFirstWins keeps the first spec's binding when two specs declare the
+// same key. A later overwrite would make defaults depend on merge order.
 func mergeFirstWins(dst *map[string]string, src map[string]string) {
 	for _, key := range sortedStringMapKeys(src) {
 		if strings.TrimSpace(key) == "" {
@@ -1459,8 +1458,8 @@ func mergeFirstWins(dst *map[string]string, src map[string]string) {
 	}
 }
 
-// sortedStringMapKeys orders map iteration so multi-spec merges emit stable
-// bindings and stable warning ordering.
+// sortedStringMapKeys keeps merge results and conflict warnings in a
+// deterministic order.
 func sortedStringMapKeys(in map[string]string) []string {
 	keys := make([]string, 0, len(in))
 	for key := range in {
