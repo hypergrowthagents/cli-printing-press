@@ -20,7 +20,7 @@ func newTicketsPromotedCmd(flags *rootFlags) *cobra.Command {
 		Use:         "tickets",
 		Short:       "Query tickets",
 		Long:        "Query tickets",
-		Annotations: map[string]string{"pp:endpoint": "tickets.query", "pp:method": "POST", "pp:path": "/tickets/query", "mcp:read-only": "true", "pp:requires-input": "true"},
+		Annotations: map[string]string{"pp:endpoint": "tickets.query", "pp:method": "POST", "pp:path": "/tickets/query", "mcp:read-only": "true", "pp:requires-input": "true", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Bare invocation of a command with a required flag/body prints help
 			// instead of pflag's terse "required flag not set" error. Optional-

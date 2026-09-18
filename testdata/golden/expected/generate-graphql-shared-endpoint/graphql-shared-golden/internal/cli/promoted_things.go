@@ -17,7 +17,7 @@ func newThingsPromotedCmd(flags *rootFlags) *cobra.Command {
 		Use:         "things <thing_id>",
 		Short:       "Get a thing via GraphQL",
 		Long:        "Get a thing via GraphQL",
-		Annotations: map[string]string{"pp:endpoint": "things.get", "pp:method": "POST", "pp:path": "/graphql", "mcp:read-only": "true"},
+		Annotations: map[string]string{"pp:endpoint": "things.get", "pp:method": "POST", "pp:path": "/graphql", "mcp:read-only": "true", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := flags.newClient()
 			if err != nil {

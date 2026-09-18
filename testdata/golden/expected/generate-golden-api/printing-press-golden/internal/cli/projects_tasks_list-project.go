@@ -22,7 +22,7 @@ func newProjectsTasksListProjectCmd(flags *rootFlags) *cobra.Command {
 		Use:         "list-project <projectId>",
 		Aliases:     []string{"get"},
 		Short:       "List project tasks",
-		Annotations: map[string]string{"pp:endpoint": "tasks.list-project", "pp:method": "GET", "pp:path": "/projects/{projectId}/tasks", "mcp:read-only": "true"},
+		Annotations: map[string]string{"pp:endpoint": "tasks.list-project", "pp:method": "GET", "pp:path": "/projects/{projectId}/tasks", "mcp:read-only": "true", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// A missing required positional is a usage error in every output

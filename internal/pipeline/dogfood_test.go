@@ -4093,7 +4093,7 @@ EOF
 	binPath := filepath.Join(t.TempDir(), "fakebin")
 	require.NoError(t, os.WriteFile(binPath, []byte(script), 0o755))
 
-	paths, err := discoverExampleCheckCommands(binPath)
+	paths, _, err := discoverExampleCheckCommands(binPath)
 	require.NoError(t, err, "stderr noise must not break JSON parsing")
 	// auth/login is filtered out because "auth" is in the framework
 	// skip set; only the posts subtree should survive.
@@ -4118,7 +4118,7 @@ exit 1
 	binPath := filepath.Join(t.TempDir(), "fakebin")
 	require.NoError(t, os.WriteFile(binPath, []byte(script), 0o755))
 
-	_, err := discoverExampleCheckCommands(binPath)
+	_, _, err := discoverExampleCheckCommands(binPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "permission denied",
 		"stderr from the failed agent-context call must surface in the error")

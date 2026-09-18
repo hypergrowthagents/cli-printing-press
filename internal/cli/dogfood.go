@@ -284,6 +284,9 @@ func printDogfoodReport(report *pipeline.DogfoodReport) {
 			exampleStatus = "SKIP"
 		}
 		fmt.Printf("Examples:          %d/%d commands have examples", report.ExampleCheck.WithExamples, report.ExampleCheck.Tested)
+		if report.ExampleCheck.Ineligible > 0 {
+			fmt.Printf(" (%d excluded: no runnable example derivable)", report.ExampleCheck.Ineligible)
+		}
 		if len(report.ExampleCheck.InvalidFlags) > 0 {
 			fmt.Printf(" (%d invalid flags: %s)", len(report.ExampleCheck.InvalidFlags), strings.Join(report.ExampleCheck.InvalidFlags, ", "))
 		}

@@ -201,6 +201,7 @@ type ExampleCheckResult struct {
 	Tested        int      `json:"tested"`
 	WithExamples  int      `json:"with_examples"`
 	ValidExamples int      `json:"valid_examples"`
+	Ineligible    int      `json:"ineligible,omitempty"`
 	InvalidFlags  []string `json:"invalid_flags,omitempty"`
 	Missing       []string `json:"missing,omitempty"`
 	Skipped       bool     `json:"skipped,omitempty"`
@@ -2951,12 +2952,13 @@ func checkExamples(dir string) ExampleCheckResult {
 	}
 	globalFlags := extractFlagNames(globalOut)
 
-	commandPaths, err := discoverExampleCheckCommands(binaryPath)
+	commandPaths, ineligible, err := discoverExampleCheckCommands(binaryPath)
 	if err != nil {
 		result.Skipped = true
 		result.Detail = fmt.Sprintf("could not discover command tree from agent-context: %v", err)
 		return result
 	}
+	result.Ineligible = ineligible
 
 	for _, parts := range commandPaths {
 		result.Tested++
@@ -3005,9 +3007,16 @@ func checkExamples(dir string) ExampleCheckResult {
 	result.Missing = uniqueSorted(result.Missing)
 
 	if result.Tested == 0 {
-		result.Detail = "no endpoint commands found to test"
+		if result.Ineligible > 0 {
+			result.Detail = fmt.Sprintf("no commands eligible for examples (%d need input the generator cannot derive)", result.Ineligible)
+		} else {
+			result.Detail = "no endpoint commands found to test"
+		}
 	} else {
 		result.Detail = fmt.Sprintf("%d/%d commands have examples", result.WithExamples, result.Tested)
+		if result.Ineligible > 0 {
+			result.Detail += fmt.Sprintf(" (%d excluded: no runnable example derivable)", result.Ineligible)
+		}
 		if len(result.InvalidFlags) > 0 {
 			result.Detail += fmt.Sprintf(" (%d invalid flags: %s)", len(result.InvalidFlags), strings.Join(result.InvalidFlags, ", "))
 		}
@@ -3016,26 +3025,55 @@ func checkExamples(dir string) ExampleCheckResult {
 	return result
 }
 
-func discoverExampleCheckCommands(binaryPath string) ([][]string, error) {
+// noRunnableExampleAnnotation marks a command the generator deliberately left
+// without an example because it could not synthesize a runnable one: the
+// command needs an opaque resource id, or a request body, that no value in the
+// spec supplies. Emitting a placeholder instead would put a command in --help
+// that fails the moment anyone runs it, which the same leg then flags.
+//
+// Such a command cannot be given an example by any amount of generator work, so
+// counting it against coverage measured the API's shape rather than the print's
+// quality. On a wide CRUD surface — where most endpoints are writes or are
+// addressed by id — that pushed coverage under the threshold no matter what,
+// and a gate that cannot be satisfied is a gate operators learn to ignore.
+const noRunnableExampleAnnotation = "pp:no-runnable-example"
+
+// exampleCheckSampleSize bounds how many commands the leg probes; each one
+// costs a --help subprocess.
+const exampleCheckSampleSize = 10
+
+func discoverExampleCheckCommands(binaryPath string) (paths [][]string, ineligible int, err error) {
 	out, err := runStdoutOnly(binaryPath, 15*time.Second, "agent-context")
 	if err != nil {
-		// Device CLIs (and any CLI lacking agent-context) enumerate via --help.
-		if paths := enumerateCommandPathsViaHelp(binaryPath); len(paths) > 0 {
-			if len(paths) > 10 {
-				paths = sampleEvenlyCommandPaths(paths, 10)
-			}
-			return paths, nil
+		// Device CLIs (and any CLI lacking agent-context) enumerate via --help,
+		// which carries no annotations — every command counts as eligible.
+		if fallback := enumerateCommandPathsViaHelp(binaryPath); len(fallback) > 0 {
+			return sampleExampleCheckCommands(fallback), 0, nil
 		}
-		return nil, fmt.Errorf("agent-context failed: %w", err)
+		return nil, 0, fmt.Errorf("agent-context failed: %w", err)
 	}
-	paths, err := dogfoodExampleCommandPathsFromAgentContext(out)
+	items, err := dogfoodExampleCommandPathsWithAnnotationsFromAgentContext(out)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if len(paths) > 10 {
-		paths = sampleEvenlyCommandPaths(paths, 10)
+	// Filter before sampling: sampling first would spend the budget on
+	// commands that cannot carry an example and shrink the real sample.
+	eligible := make([][]string, 0, len(items))
+	for _, item := range items {
+		if item.Annotations[noRunnableExampleAnnotation] == "true" {
+			ineligible++
+			continue
+		}
+		eligible = append(eligible, item.Path)
 	}
-	return paths, nil
+	return sampleExampleCheckCommands(eligible), ineligible, nil
+}
+
+func sampleExampleCheckCommands(paths [][]string) [][]string {
+	if len(paths) > exampleCheckSampleSize {
+		return sampleEvenlyCommandPaths(paths, exampleCheckSampleSize)
+	}
+	return paths
 }
 
 // runStdoutOnly runs binaryPath with args and returns stdout. Unlike

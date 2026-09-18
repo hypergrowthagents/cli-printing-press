@@ -16,7 +16,7 @@ func newQuotesDeleteCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "delete <quote_id>",
 		Short:       "Delete quote",
-		Annotations: map[string]string{"pp:endpoint": "quotes.delete", "pp:method": "DELETE", "pp:path": "/api/quotes/{quote_id}"},
+		Annotations: map[string]string{"pp:endpoint": "quotes.delete", "pp:method": "DELETE", "pp:path": "/api/quotes/{quote_id}", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// A missing required positional is a usage error in every output

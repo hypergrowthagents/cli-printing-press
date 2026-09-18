@@ -16,7 +16,7 @@ func newQuotesGetCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "get <quote_id>",
 		Short:       "Get quote",
-		Annotations: map[string]string{"pp:endpoint": "quotes.get", "pp:method": "GET", "pp:path": "/api/quotes/{quote_id}", "mcp:read-only": "true"},
+		Annotations: map[string]string{"pp:endpoint": "quotes.get", "pp:method": "GET", "pp:path": "/api/quotes/{quote_id}", "mcp:read-only": "true", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// A missing required positional is a usage error in every output

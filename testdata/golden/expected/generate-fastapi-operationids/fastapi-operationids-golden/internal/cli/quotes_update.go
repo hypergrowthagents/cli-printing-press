@@ -18,7 +18,7 @@ func newQuotesUpdateCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "update <quote_id>",
 		Short:       "Update quote",
-		Annotations: map[string]string{"pp:endpoint": "quotes.update", "pp:method": "PATCH", "pp:path": "/api/quotes/{quote_id}"},
+		Annotations: map[string]string{"pp:endpoint": "quotes.update", "pp:method": "PATCH", "pp:path": "/api/quotes/{quote_id}", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// A missing required positional is a usage error in every output

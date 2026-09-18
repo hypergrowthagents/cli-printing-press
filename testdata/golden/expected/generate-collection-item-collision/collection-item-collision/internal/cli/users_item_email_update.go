@@ -18,7 +18,7 @@ func newUsersItemEmailUpdateCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "update <userId>",
 		Short:       "Update a user's email",
-		Annotations: map[string]string{"pp:endpoint": "email.update", "pp:method": "PUT", "pp:path": "/users/{userId}/email"},
+		Annotations: map[string]string{"pp:endpoint": "email.update", "pp:method": "PUT", "pp:path": "/users/{userId}/email", "pp:no-runnable-example": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// A missing required positional is a usage error in every output
