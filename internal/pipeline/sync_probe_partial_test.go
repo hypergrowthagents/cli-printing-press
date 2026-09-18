@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -174,4 +175,41 @@ func dbArg(args []string) string {
 	out, err := buildCmd.CombinedOutput()
 	require.NoError(t, err, "building test binary: %s", string(out))
 	return binaryPath
+}
+
+// verify runs unauthenticated. Against an API that rejects anonymous reads
+// every resource fails for one reason that says nothing about the print, so the
+// pipeline is unverified rather than crashed.
+func TestSyncProbeAuthBlockedRecognizesAnAllAuthFailureWall(t *testing.T) {
+	authErr := errors.New(`exit status 1: {"event":"sync_error","resource":"bills","status":401,"title":"Application key not present"}`)
+
+	assert.True(t, syncProbeAuthBlocked([]error{authErr}))
+	assert.True(t, syncProbeAuthBlocked([]error{authErr, authErr}))
+}
+
+// A mixed failure is not an auth story, so the ordinary verdicts must speak.
+func TestSyncProbeAuthBlockedIgnoresMixedFailures(t *testing.T) {
+	authErr := errors.New(`exit status 1: {"event":"sync_error","status":401}`)
+	serverErr := errors.New(`exit status 1: {"event":"sync_error","status":500}`)
+
+	assert.False(t, syncProbeAuthBlocked([]error{authErr, serverErr}))
+	assert.False(t, syncProbeAuthBlocked([]error{serverErr}))
+	assert.False(t, syncProbeAuthBlocked(nil))
+	assert.False(t, syncProbeAuthBlocked([]error{errors.New("exit status 2: panic: nil map")}),
+		"a crash with no HTTP status is not an auth block")
+}
+
+// Not every printed CLI exposes `sql`. Treating that absence as an empty store
+// would call every such CLI's pipeline a crash.
+func TestSyncProbeStoreExecutedFallsBackToTheStoreFileWhenSQLIsAbsent(t *testing.T) {
+	binary := buildCrashingSyncProbeBinary(t) // its sql probe exits non-zero
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	assert.False(t, syncProbeStoreExecuted(binary, dbPath, os.Environ()),
+		"no store file means sync never ran")
+
+	require.NoError(t, os.WriteFile(dbPath, []byte("SQLite format 3\x00"), 0o644))
+	assert.True(t, syncProbeStoreExecuted(binary, dbPath, os.Environ()),
+		"a written store proves sync ran even when sql cannot be queried")
 }

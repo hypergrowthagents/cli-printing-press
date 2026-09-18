@@ -681,13 +681,13 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 	syncErr := runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--resources", syncProbeResource(cliDir), "--full"}), env, syncTimeout)
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
-		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--full"}), env, 30*time.Second)
+		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--full"}), env, syncTimeout)
 	}
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
 		// Sync might not accept --resources or --full; keep --db when
 		// possible so downstream sql probes read the same temporary store.
-		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath}), env, 30*time.Second)
+		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath}), env, syncTimeout)
 	}
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
@@ -709,6 +709,12 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 		}
 		if syncProbeHitDeadline(syncErrors) {
 			return false, fmt.Sprintf("FAIL: sync did not finish within %s (%d resources)", syncTimeout, syncResourceCount(cliDir))
+		}
+		// Checked before the store, because an unauthenticated run leaves
+		// schema and no rows — falling through would blame the row count for
+		// what is really a missing credential.
+		if syncProbeAuthBlocked(syncErrors) {
+			return true, "WARN: sync could not authenticate — data pipeline unverified without credentials"
 		}
 		// The generated sync exits non-zero when any single resource fails, so
 		// on a wide CLI one unserved path condemns the whole command. Ask the

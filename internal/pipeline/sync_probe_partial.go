@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -52,11 +54,52 @@ func syncProbeResource(cliDir string) string {
 // verdict — including failing it — on evidence rather than on an exit code.
 func syncProbeStoreExecuted(binary, dbPath string, env []string) bool {
 	out, err := runCLIWithOutput(binary, []string{"sql", "--db", dbPath, syncProbeTableQuery}, env, 10*time.Second)
-	if err != nil {
+	if err == nil {
+		return len(parseSQLOutput(out)) > 0
+	}
+	// Not every printed CLI exposes `sql`: a wide surface hides it behind the
+	// orchestration MCP pattern. Treating that absence as an empty store would
+	// call every such CLI's pipeline a crash, so fall back to the store file,
+	// which sync creates lazily and only once it is really running.
+	info, statErr := os.Stat(dbPath)
+	return statErr == nil && info.Size() > 0
+}
+
+// syncProbeAuthBlocked reports whether every sync attempt failed because the
+// CLI could not authenticate. verify runs unauthenticated, so against an API
+// that rejects anonymous reads every resource fails for one reason that says
+// nothing about the print. That is not a crash and not a row shortfall — it is
+// a pipeline nobody can verify without credentials, and saying so keeps the
+// reader from hunting a defect in generated sync code that works as written.
+func syncProbeAuthBlocked(errs []error) bool {
+	if len(errs) == 0 {
 		return false
 	}
-	return len(parseSQLOutput(out)) > 0
+	sawAuth := false
+	for _, err := range errs {
+		if err == nil {
+			return false
+		}
+		for _, status := range syncErrorStatusRe.FindAllStringSubmatch(err.Error(), -1) {
+			if len(status) < 2 {
+				continue
+			}
+			switch status[1] {
+			case "401", "403":
+				sawAuth = true
+			default:
+				// A non-auth failure is mixed in, so credentials are not the
+				// whole story and the ordinary verdicts should speak.
+				return false
+			}
+		}
+	}
+	return sawAuth
 }
+
+// syncErrorStatusRe pulls the HTTP status out of the sync_error events the
+// generated sync emits, which arrive inside the probe's wrapped exec error.
+var syncErrorStatusRe = regexp.MustCompile(`"status"\s*:\s*(\d{3})`)
 
 // syncProbeTableQuery lists the domain tables a sync is expected to create,
 // excluding sqlite internals, full-text shadow tables, and bookkeeping.

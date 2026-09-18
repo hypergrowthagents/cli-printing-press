@@ -26,27 +26,53 @@ tags:
 ## Problem
 
 `cli-printing-press verify` reported `Data Pipeline: FAIL: sync crashed` for a
-601-endpoint CLI that syncs cleanly against a healthy mock:
+601-endpoint CLI. The message was wrong in three independent ways, and each had
+to be peeled back before the real cause showed.
 
-```
-sync --full -> exit 0, 213 resources, 211 success, 2 warned, 0 errored, 24.1s
-```
+**A caution on diagnosis.** The verdict says "crashed" for every failure mode
+the probe cannot name, so it invites a guess. The first guess here — partial
+resource failure, supported by a hand-built mock showing `211/213 success` —
+was wrong for this CLI, and measuring against a mock that was not the probe's
+own mock is what made it look right. Instrument the probe inside a real
+`verify` run before believing any story about this message.
 
-## Root cause
+## Root causes
 
-Two behaviours combined.
+Three defects, found in this order.
 
-A generated `sync` exits non-zero when **any single resource** fails, which is
-reasonable on its own. `runDataPipelineTest` then treated any non-zero exit as a
-crash of the whole pipeline. With hundreds of resources, one path the
-spec-derived mock does not serve was enough to condemn the print — so the
-failure tracked breadth rather than brokenness, and got likelier the wider the
-CLI.
+### 1. A non-zero exit was read as a crash
 
-The probe's first attempt made this worse by scoping sync to the literal
-resource name `repos`, a GitHub-ism absent from nearly every other CLI. That
-attempt failed by construction on all of them, spending a probe and teaching
-nothing.
+A generated `sync` exits non-zero when **any single resource** fails. The probe
+treated any non-zero exit as a crash of the whole pipeline, so on a wide CLI one
+path the mock does not serve condemned the print. The failure tracked breadth
+rather than brokenness and got likelier the more resources a CLI declares.
+
+### 2. Two of the five probe attempts kept a fixed budget
+
+An earlier fix scaled the probe budget with resource count, but only for three
+of the five attempts. Attempts 2 and 3 — the ones that pass `--db`, and so the
+only ones whose store the downstream checks read — kept a hardcoded 30s. The
+sync under test needed 94s, so both were killed at the deadline.
+
+### 3. The store check assumed every CLI has `sql`
+
+The probe asked the store for its domain tables by shelling out to `sql`. A CLI
+printed from a large spec hides `sql` behind the orchestration MCP pattern, so
+the query failed with "unknown command" and an empty store was inferred — which
+reported a crash for every such CLI regardless of what sync did.
+
+### The cause that actually produced this verdict
+
+None of the above. The printed CLI carried a hand-authored environment-
+consistency guard that refused any token URL outside its allowlist. `verify`'s
+mock mode injects a placeholder token host, so the guard exited non-zero on
+**every** command, sync included, before a single request was made. The
+generated write gate already exempted the verification harness; the
+hand-authored guard did not, and that asymmetry is the whole bug. See
+[`printed-cli-safety-gates-must-exempt-the-verify-harness-2026-09-18.md`](printed-cli-safety-gates-must-exempt-the-verify-harness-2026-09-18.md).
+
+Fixing the guard moved verify from 91% to 100% (462/463) — the guard had been
+failing 42 other commands too.
 
 ## Resolution
 
