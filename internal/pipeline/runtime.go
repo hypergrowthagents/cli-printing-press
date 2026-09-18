@@ -664,9 +664,12 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 	dbPath := filepath.Join(tmpDir, "test.db")
 	env = append(env, "HOME="+tmpDir) // so sync uses temp location
 
-	// Test sync (if it exists)
+	// Test sync (if it exists). The budget scales with the CLI's declared
+	// resource count: the probe walks them in sequence, so breadth alone can
+	// exhaust a fixed budget and masquerade as a crash.
+	syncTimeout := syncProbeTimeout(cliDir)
 	var syncErrors []error
-	syncErr := runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--resources", "repos", "--full"}), env, 30*time.Second)
+	syncErr := runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--resources", "repos", "--full"}), env, syncTimeout)
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
 		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--full"}), env, 30*time.Second)
@@ -681,11 +684,11 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 		syncErrors = append(syncErrors, syncErr)
 		// Sync might not accept --db either; try the bare command before
 		// deciding the pipeline crashed.
-		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--full"}), env, 30*time.Second)
+		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--full"}), env, syncTimeout)
 	}
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
-		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync"}), env, 30*time.Second)
+		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync"}), env, syncTimeout)
 	}
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
@@ -694,6 +697,9 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 		}
 		if flag, ok := firstUnknownSyncFlag(syncErrors); ok {
 			return false, fmt.Sprintf("FAIL: sync rejected flag %s", flag)
+		}
+		if syncProbeHitDeadline(syncErrors) {
+			return false, fmt.Sprintf("FAIL: sync did not finish within %s (%d resources)", syncTimeout, syncResourceCount(cliDir))
 		}
 		return false, "FAIL: sync crashed"
 	}
