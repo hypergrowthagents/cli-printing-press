@@ -636,7 +636,7 @@ func runBrowserSessionProofTest(binary string, auth apispec.AuthConfig) CommandR
 
 // runDataPipelineTest tests the sync -> sql -> search -> health chain.
 // Returns (pass bool, detail string) where detail gives PASS/WARN/SKIP/FAIL context.
-func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, expectedRows int) (bool, string) {
+func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, expectedRows int) (pass bool, detail string) {
 	if strings.TrimSpace(cliDir) != "" {
 		if manifest, err := ReadCLIManifest(cliDir); err == nil && manifest.IsLocalDatastore() {
 			return true, "SKIP (local-datastore CLI: no network sync to verify)"
@@ -669,7 +669,16 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 	// exhaust a fixed budget and masquerade as a crash.
 	syncTimeout := syncProbeTimeout(cliDir)
 	var syncErrors []error
-	syncErr := runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--resources", "repos", "--full"}), env, syncTimeout)
+	syncPartial := false
+	// Say so wherever the verdict lands: a reader who sees only PASS would not
+	// know some resources never synced, and one who sees only FAIL would hunt
+	// a crash that did not happen.
+	defer func() {
+		if syncPartial {
+			detail += " (sync reported partial resource failure)"
+		}
+	}()
+	syncErr := runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--resources", syncProbeResource(cliDir), "--full"}), env, syncTimeout)
 	if syncErr != nil {
 		syncErrors = append(syncErrors, syncErr)
 		syncErr = runCLI(binary, boundedSyncProbeArgs(mode, []string{"sync", "--db", dbPath, "--full"}), env, 30*time.Second)
@@ -701,14 +710,20 @@ func runDataPipelineTest(binary, cliDir, mode string, envFn func() []string, exp
 		if syncProbeHitDeadline(syncErrors) {
 			return false, fmt.Sprintf("FAIL: sync did not finish within %s (%d resources)", syncTimeout, syncResourceCount(cliDir))
 		}
-		return false, "FAIL: sync crashed"
+		// The generated sync exits non-zero when any single resource fails, so
+		// on a wide CLI one unserved path condemns the whole command. Ask the
+		// store whether the pipeline actually ran before calling it a crash;
+		// the row checks below still decide the verdict, on evidence.
+		if !syncProbeStoreExecuted(binary, dbPath, env) {
+			return false, "FAIL: sync crashed"
+		}
+		syncPartial = true
 	}
 
 	// Test health (if available)
 	_ = runCLI(binary, []string{"health", "--db", dbPath}, env, 10*time.Second)
 
-	tableQuery := `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite%' AND name NOT LIKE '%_fts%' AND name != 'sync_state'`
-	tablesOut, sqlErr := runCLIWithOutput(binary, []string{"sql", "--db", dbPath, tableQuery}, env, 10*time.Second)
+	tablesOut, sqlErr := runCLIWithOutput(binary, []string{"sql", "--db", dbPath, syncProbeTableQuery}, env, 10*time.Second)
 	if sqlErr != nil {
 		return true, "PASS: sync completed (sql unavailable, table validation skipped)"
 	}
