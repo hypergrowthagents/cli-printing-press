@@ -1284,7 +1284,7 @@ func mergeSpecsWithOptions(specs []*spec.APISpec, name string, opts mergeSpecOpt
 		Version:         specs[0].Version,
 		BaseURL:         mergedBaseURL,
 		BasePath:        specs[0].BasePath,
-		Auth:            mergeMultiSpecAuth(specs),
+		Auth:            mergeMultiSpecAuth(specs, name),
 		RequiredHeaders: mergeMultiSpecRequiredHeaders(specs),
 		Learn:           mergeMultiSpecLearn(specs),
 		Config: spec.ConfigSpec{
@@ -1491,7 +1491,7 @@ func uniqueMultiSpecResourceName(resources map[string]spec.Resource, preferred s
 	}
 }
 
-func mergeMultiSpecAuth(specs []*spec.APISpec) spec.AuthConfig {
+func mergeMultiSpecAuth(specs []*spec.APISpec, cliName string) spec.AuthConfig {
 	if len(specs) == 1 {
 		return specs[0].Auth
 	}
@@ -1540,6 +1540,11 @@ func mergeMultiSpecAuth(specs []*spec.APISpec) spec.AuthConfig {
 
 	auth.Scopes = sortedScopes(scopeSet)
 	auth.AdditionalHeaders = headers
+	// Auth env var names arrive carrying the prefix of whichever spec supplied
+	// the auth model. The merged CLI answers to cliName, and every other
+	// generated surface (api-key env var, template vars, docs, config) already
+	// uses it, so rebase here or the CLI reads variables nobody sets.
+	specmeta.RebaseAuthEnvPrefix(&auth, specs[authSpecIndex].Name, cliName)
 	return auth
 }
 

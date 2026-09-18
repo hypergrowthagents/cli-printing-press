@@ -2316,8 +2316,14 @@ func TestMergeSpecsPreservesPrimaryAuthModelWhileFillingMissingOAuthMetadata(t *
 	assert.Equal(t, "bearer_token", merged.Auth.Type)
 	assert.Equal(t, "Authorization", merged.Auth.Header)
 	assert.Equal(t, "Bearer {token}", merged.Auth.Format)
-	assert.Equal(t, []string{"CURATED_TOKEN"}, merged.Auth.EnvVars)
-	assert.Equal(t, []string{"CURATED_TOKEN"}, authEnvVarNames(merged.Auth.EnvVarSpecs))
+	// The primary's env var wins over the secondary's (VENDOR_ACCESS_TOKEN is
+	// not adopted), and its prefix is rebased onto the merged CLI name. The
+	// single-spec path already rebases this way when --name is given, so
+	// leaving the merge path un-rebased made identical inputs produce
+	// different env var names depending on how many specs were passed —
+	// and left the merged CLI reading variables its own docs never mention.
+	assert.Equal(t, []string{"COMBO_TOKEN"}, merged.Auth.EnvVars)
+	assert.Equal(t, []string{"COMBO_TOKEN"}, authEnvVarNames(merged.Auth.EnvVarSpecs))
 	assert.Equal(t, "https://accounts.example.com/authorize", merged.Auth.AuthorizationURL)
 	assert.Equal(t, "https://accounts.example.com/token", merged.Auth.TokenURL)
 }
