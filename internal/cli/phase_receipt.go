@@ -80,7 +80,7 @@ func newPhaseReceiptEnterCmd() *cobra.Command {
 		},
 	}
 	addPhaseReceiptCommonFlags(cmd, &flags)
-	cmd.Flags().BoolVar(&flags.resume, "resume", false, "Resume the same phase after a recorded blocker or failure")
+	cmd.Flags().BoolVar(&flags.resume, "resume", false, "Re-enter the same phase after a recorded blocker or failure, or reopen it after it completed onto a non-canonical route (a hold)")
 	return cmd
 }
 

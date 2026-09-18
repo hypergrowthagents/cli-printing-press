@@ -214,9 +214,21 @@ func EnterPhase(opts PhaseReceiptOptions) (*PhaseReceipt, bool, error) {
 			return nil, false, fmt.Errorf("phase %s is %s; pass --resume after resolving the recorded blocker", opts.Phase, last.Event)
 		}
 	case last.Event == PhaseReceiptCompleted || last.Event == PhaseReceiptSkipped:
-		if last.Next != opts.Phase {
-			return nil, false, fmt.Errorf("phase transition mismatch: receipt names next phase %q, cannot enter %q", last.Next, opts.Phase)
+		if last.Next == opts.Phase {
+			break
 		}
+		// A phase can complete while routing somewhere other than its canonical
+		// successor — a shipcheck hold completes itself and points at archival.
+		// Once the blockers are fixed there is otherwise no way back: the run is
+		// pinned to the alternate route forever, and the ledger cannot say that
+		// the hold was superseded. Reopening is therefore allowed, but only for
+		// the phase that just completed, so it can never skip pending work.
+		if opts.Resume && last.Phase == opts.Phase {
+			break
+		}
+		return nil, false, fmt.Errorf(
+			"phase transition mismatch: receipt names next phase %q, cannot enter %q (pass --resume to reopen %q itself)",
+			last.Next, opts.Phase, last.Phase)
 	default:
 		return nil, false, fmt.Errorf("cannot enter phase %q after %s event for phase %q", opts.Phase, last.Event, last.Phase)
 	}
@@ -672,7 +684,11 @@ func validateStoredPhaseTransitions(receipts []PhaseReceipt) error {
 		if current.Event == PhaseReceiptEntered {
 			switch previous.Event {
 			case PhaseReceiptCompleted, PhaseReceiptSkipped:
-				if previous.Next != current.Phase {
+				// A phase reopened after completing onto a non-canonical route
+				// re-enters itself rather than the route it named, so the two
+				// legal shapes are "followed the handoff" and "reopened the
+				// phase that just completed". Anything else is a skip.
+				if previous.Next != current.Phase && previous.Phase != current.Phase {
 					return fmt.Errorf("parsing phase receipt ledger line %d: entered phase does not match previous next phase", line)
 				}
 			case PhaseReceiptBlocked, PhaseReceiptFailed:
