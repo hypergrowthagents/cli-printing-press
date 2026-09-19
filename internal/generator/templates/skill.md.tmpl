@@ -148,12 +148,20 @@ This CLI was generated with browser-observed traffic context.
 
 ## Command Reference
 {{range $name, $resource := .Resources}}
+{{- /* A resource whose commands all live in sub-resources has no endpoints of
+     its own. Emitting its heading alone told the reader the group was empty,
+     so recurse instead: the nested leaves are the commands. */}}
 **{{$name}}** — {{$resource.Description}}
 {{range $eName, $endpoint := $resource.Endpoints}}
 {{- if index $.PromotedResourceNames $name}}
 - `{{$.Name}}-pp-cli {{kebab $name}}{{positionalArgs $endpoint}}` — {{oneline $endpoint.Description}}
 {{- else}}
 - `{{$.Name}}-pp-cli {{kebab $name}} {{kebab $eName}}` — {{oneline $endpoint.Description}}
+{{- end}}
+{{- end}}
+{{- range $subName, $subResource := $resource.SubResources}}
+{{- range $eName, $endpoint := $subResource.Endpoints}}
+- `{{$.Name}}-pp-cli {{kebab $name}} {{kebab $subName}} {{kebab $eName}}` — {{oneline $endpoint.Description}}
 {{- end}}
 {{- end}}
 {{end}}
@@ -211,6 +219,9 @@ These commands are declared by the spec author and require separate hand-written
 ## Auth Setup
 {{- /* Published-library sweep: heading stays "## Auth Setup"; body must name only resolved credential env vars (same set as .printing-press.json auth_env_vars). Drop independently authored prose that names unread vars; prefer the type-aware export block, including the basic-auth pair. */}}
 {{- $canonicalEnvVar := .Auth.CanonicalEnvVar}}
+{{- /* Every env var the auth model marks required. Naming only the canonical
+     one told a reader to set one of several, so the CLI still refused. */}}
+{{- $requiredAuthEnvVars := requiredAuthEnvVars $.Auth}}
 {{- $basicAuthEnvVars := basicAuthEnvVars .Auth}}
 {{- $authNarrative := ""}}
 {{- if and .Narrative .Narrative.AuthNarrative}}
@@ -221,7 +232,7 @@ These commands are declared by the spec author and require separate hand-written
 {{$authNarrative}}
 {{- else if $basicAuthEnvVars}}
 
-Run `{{.Name}}-pp-cli auth setup` to print the URL and steps for getting credentials (add `--launch` to open the URL). Then set:
+{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` to print the URL and steps for getting credentials (add `--launch` to open the URL). Then set{{else}}Set{{end}}:
 
 ```bash
 {{- range $basicAuthEnvVars}}
@@ -235,7 +246,7 @@ To persist credentials, use `{{$authPersistenceCommand}}`. Stored secrets live i
 {{- else if eq .Auth.Type "api_key"}}
 
 {{- with $canonicalEnvVar}}
-Run `{{$.Name}}-pp-cli auth setup` to print the URL and steps for getting a key (add `--launch` to open the URL). Then set:
+{{if authHasSetupCommand}}Run `{{$.Name}}-pp-cli auth setup` to print the URL and steps for getting a key (add `--launch` to open the URL). Then set{{else}}Set{{end}}:
 
 ```bash
 export {{.Name}}="<your-key>"
@@ -247,7 +258,7 @@ To persist credentials, use `{{$authPersistenceCommand}}`. Stored secrets live i
 {{- end}}
 {{- else if eq .Auth.EffectiveOAuth2Grant "device_code"}}
 
-Run `{{.Name}}-pp-cli auth setup` for setup details if needed. Then authenticate:
+{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` for setup details if needed. Then authenticate{{else}}Authenticate{{end}}:
 
 ```bash
 {{- if or .Auth.DefaultClientID (not $deviceEnvVars)}}
@@ -261,7 +272,7 @@ export {{(index $deviceEnvVars 0).Name}}=<client-id>
 Open the verification URL, enter the printed user code, and return to the CLI. Tokens are stored locally and refreshed automatically.
 {{- else if eq .Auth.Type "oauth2"}}
 
-Run `{{.Name}}-pp-cli auth setup` for the registration URL and steps (add `--launch` to open the URL). Then authenticate:
+{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` for the registration URL and steps (add `--launch` to open the URL). Then authenticate{{else}}Authenticate{{end}}:
 
 ```bash
 {{.Name}}-pp-cli auth login
@@ -281,7 +292,7 @@ export {{.Name}}="{{authEnvPlaceholder .}}"
 Access tokens are refreshed automatically before API calls.
 {{- else if eq .Auth.Type "bearer_token"}}
 
-Run `{{.Name}}-pp-cli auth setup` for the URL and steps to obtain a token (add `--launch` to open the URL){{if $authPersistenceCommand}}. Then store it{{end}}:
+{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` for the URL and steps to obtain a token (add `--launch` to open the URL){{if $authPersistenceCommand}}. Then store it{{end}}{{else}}Set the credentials below{{if $authPersistenceCommand}}, then store the token{{end}}{{end}}:
 {{- if $authPersistenceCommand}}
 
 ```bash
@@ -297,10 +308,19 @@ If authenticated commands start returning token errors after previously working,
 {{.Name}}-pp-cli refresh-bearer
 ```
 {{- end}}
-{{- with $canonicalEnvVar}}
+{{- if $requiredAuthEnvVars}}
+
+Or set {{if gt (len $requiredAuthEnvVars) 1}}these environment variables{{else}}this environment variable{{end}}:
+
+```bash
+{{- range $requiredAuthEnvVars}}
+export {{.Name}}="{{authEnvPlaceholder .}}"
+{{- end}}
+```
+{{- else}}{{with $canonicalEnvVar}}
 
 Or set `{{.Name}}` as an environment variable.
-{{- end}}
+{{- end}}{{end}}
 {{- else if or (eq .Auth.Type "cookie") (eq .Auth.Type "composed")}}
 
 This CLI uses a browser session. Log in to {{.Auth.CookieDomain}} in Chrome, then:

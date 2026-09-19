@@ -68,7 +68,11 @@ Run `learn-disabled-example-pp-cli auth setup` for the URL and steps to obtain a
 echo "$TOKEN" | learn-disabled-example-pp-cli auth set-token
 ```
 
-Or set `LEARN_DISABLED_TOKEN` as an environment variable.
+Or set this environment variable:
+
+```bash
+export LEARN_DISABLED_TOKEN="your-token-here"
+```
 
 Run `learn-disabled-example-pp-cli doctor` to verify setup.
 

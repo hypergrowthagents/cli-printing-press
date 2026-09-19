@@ -75,7 +75,11 @@ Run `learn-loop-example-pp-cli auth setup` for the URL and steps to obtain a tok
 echo "$TOKEN" | learn-loop-example-pp-cli auth set-token
 ```
 
-Or set `LEARN_LOOP_TOKEN` as an environment variable.
+Or set this environment variable:
+
+```bash
+export LEARN_LOOP_TOKEN="your-token-here"
+```
 
 Run `learn-loop-example-pp-cli doctor` to verify setup.
 

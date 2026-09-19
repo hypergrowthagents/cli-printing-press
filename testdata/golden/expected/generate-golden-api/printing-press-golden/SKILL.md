@@ -42,6 +42,9 @@ Purpose-built fixture for golden generation coverage.
 - `printing-press-golden-pp-cli projects create` — Create project
 - `printing-press-golden-pp-cli projects get` — Get project
 - `printing-press-golden-pp-cli projects list` — List projects
+- `printing-press-golden-pp-cli projects avatar upload-project` — Upload project avatar
+- `printing-press-golden-pp-cli projects tasks list-project` — List project tasks
+- `printing-press-golden-pp-cli projects tasks update-project` — Update project task
 
 **public** — Manage public
 
@@ -49,6 +52,8 @@ Purpose-built fixture for golden generation coverage.
 
 **reports** — Manage reports
 
+- `printing-press-golden-pp-cli reports export report-year` — Download the annual report as a binary file
+- `printing-press-golden-pp-cli reports summary get-report-year` — Get a report summary for a year
 
 **tickets** — Manage tickets
 
