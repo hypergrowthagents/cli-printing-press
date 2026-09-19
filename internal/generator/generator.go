@@ -10190,10 +10190,22 @@ func endpointPathWithBase(baseURL, path string) string {
 // of the others.
 func requiredAuthEnvVars(auth spec.AuthConfig) []spec.AuthEnvVar {
 	var required []spec.AuthEnvVar
-	for _, envVar := range auth.EnvVarSpecs {
-		if envVar.Required {
-			required = append(required, envVar)
+	seen := map[string]bool{}
+	add := func(envVar spec.AuthEnvVar) {
+		if !envVar.Required || envVar.Name == "" || seen[envVar.Name] {
+			return
 		}
+		seen[envVar.Name] = true
+		required = append(required, envVar)
+	}
+	for _, envVar := range auth.EnvVarSpecs {
+		add(envVar)
+	}
+	// A sibling apiKey scheme carries its credential here rather than in the
+	// auth model's own env vars. Omitting these named two of the three values
+	// a reader had to set, so the CLI still refused.
+	for _, header := range auth.AdditionalHeaders {
+		add(header.EnvVar)
 	}
 	return required
 }

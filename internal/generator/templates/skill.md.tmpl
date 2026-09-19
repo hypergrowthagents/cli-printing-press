@@ -292,7 +292,9 @@ export {{.Name}}="{{authEnvPlaceholder .}}"
 Access tokens are refreshed automatically before API calls.
 {{- else if eq .Auth.Type "bearer_token"}}
 
-{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` for the URL and steps to obtain a token (add `--launch` to open the URL){{if $authPersistenceCommand}}. Then store it{{end}}{{else}}Set the credentials below{{if $authPersistenceCommand}}, then store the token{{end}}{{end}}:
+{{- if or authHasSetupCommand $authPersistenceCommand}}
+{{if authHasSetupCommand}}Run `{{.Name}}-pp-cli auth setup` for the URL and steps to obtain a token (add `--launch` to open the URL){{if $authPersistenceCommand}}. Then store it{{end}}{{else}}Store the token{{end}}:
+{{- end}}
 {{- if $authPersistenceCommand}}
 
 ```bash
@@ -310,7 +312,7 @@ If authenticated commands start returning token errors after previously working,
 {{- end}}
 {{- if $requiredAuthEnvVars}}
 
-Or set {{if gt (len $requiredAuthEnvVars) 1}}these environment variables{{else}}this environment variable{{end}}:
+{{if or authHasSetupCommand $authPersistenceCommand}}Or set{{else}}Set{{end}} {{if gt (len $requiredAuthEnvVars) 1}}these environment variables{{else}}this environment variable{{end}}:
 
 ```bash
 {{- range $requiredAuthEnvVars}}

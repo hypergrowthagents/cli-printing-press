@@ -139,3 +139,41 @@ func TestSkillNamesEveryRequiredAuthEnvVar(t *testing.T) {
 		assert.Contains(t, skill, name, "every required auth env var must be named")
 	}
 }
+
+// A sibling apiKey scheme carries its credential in AdditionalHeaders rather
+// than the auth model's own env vars. Omitting those named two of the three
+// values a reader had to set, so the CLI still refused.
+func TestSkillNamesAdditionalHeaderAuthEnvVars(t *testing.T) {
+	t.Parallel()
+
+	apiSpec := minimalSpec("sibling-header-auth")
+	apiSpec.Auth = spec.AuthConfig{
+		Type:        "bearer_token",
+		OAuth2Grant: spec.OAuth2GrantClientCredentials,
+		TokenURL:    "https://auth.example.com/connect/token",
+		EnvVarSpecs: []spec.AuthEnvVar{
+			{Name: "SIBLING_HEADER_AUTH_CLIENT_ID", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: true},
+			{Name: "SIBLING_HEADER_AUTH_CLIENT_SECRET", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: true, Sensitive: true},
+		},
+		AdditionalHeaders: []spec.AdditionalAuthHeader{{
+			Header: "X-App-Key",
+			In:     "header",
+			Scheme: "apiKeyHeader",
+			EnvVar: spec.AuthEnvVar{Name: "SIBLING_HEADER_AUTH_APP_KEY", Kind: spec.AuthEnvVarKindPerCall, Required: true, Sensitive: true},
+		}},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), naming.CLI(apiSpec.Name))
+	require.NoError(t, New(apiSpec, outputDir).Generate())
+
+	skill := readGeneratedFile(t, outputDir, "SKILL.md")
+	for _, name := range []string{
+		"SIBLING_HEADER_AUTH_CLIENT_ID",
+		"SIBLING_HEADER_AUTH_CLIENT_SECRET",
+		"SIBLING_HEADER_AUTH_APP_KEY",
+	} {
+		assert.Contains(t, skill, name)
+	}
+	// No dangling "Or set" when nothing preceded the env var block.
+	assert.NotContains(t, skill, "Or set these environment variables")
+}
