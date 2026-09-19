@@ -177,3 +177,53 @@ func TestSkillNamesAdditionalHeaderAuthEnvVars(t *testing.T) {
 	// No dangling "Or set" when nothing preceded the env var block.
 	assert.NotContains(t, skill, "Or set these environment variables")
 }
+
+// An agent that sets only the auth vars still 404s on every path when an
+// endpoint template variable is unset, so the SKILL must name those too.
+func TestSkillDocumentsEndpointTemplateVars(t *testing.T) {
+	t.Parallel()
+
+	apiSpec := minimalSpec("endpoint-var-skill")
+	apiSpec.EndpointTemplateVars = []string{"tenant"}
+	apiSpec.EndpointTemplateEnvOverrides = map[string]string{"tenant": "ENDPOINT_VAR_SKILL_TENANT_ID"}
+
+	outputDir := filepath.Join(t.TempDir(), naming.CLI(apiSpec.Name))
+	require.NoError(t, New(apiSpec, outputDir).Generate())
+
+	skill := readGeneratedFile(t, outputDir, "SKILL.md")
+	assert.Contains(t, skill, "ENDPOINT_VAR_SKILL_TENANT_ID",
+		"the SKILL must name the override the generated config actually reads")
+	assert.NotContains(t, skill, "ENDPOINT_VAR_SKILL_TENANT=",
+		"the conventional name is not what the CLI reads")
+}
+
+// The README env table documented a conventional name nothing consults when
+// the spec declared an override.
+func TestReadmeEnvTableUsesTheResolvedEndpointEnvName(t *testing.T) {
+	t.Parallel()
+
+	apiSpec := minimalSpec("endpoint-var-readme")
+	apiSpec.EndpointTemplateVars = []string{"tenant"}
+	apiSpec.EndpointTemplateEnvOverrides = map[string]string{"tenant": "ENDPOINT_VAR_README_TENANT_ID"}
+	apiSpec.Auth = spec.AuthConfig{
+		Type:        "bearer_token",
+		OAuth2Grant: spec.OAuth2GrantClientCredentials,
+		TokenURL:    "https://auth.example.com/connect/token",
+		EnvVarSpecs: []spec.AuthEnvVar{
+			{Name: "ENDPOINT_VAR_README_CLIENT_ID", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: true},
+		},
+		AdditionalHeaders: []spec.AdditionalAuthHeader{{
+			Header: "X-App-Key",
+			EnvVar: spec.AuthEnvVar{Name: "ENDPOINT_VAR_README_APP_KEY", Kind: spec.AuthEnvVarKindPerCall, Required: true, Sensitive: true},
+		}},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), naming.CLI(apiSpec.Name))
+	require.NoError(t, New(apiSpec, outputDir).Generate())
+
+	readme := readGeneratedFile(t, outputDir, "README.md")
+	assert.Contains(t, readme, "`ENDPOINT_VAR_README_TENANT_ID`")
+	assert.NotContains(t, readme, "`ENDPOINT_VAR_README_TENANT`  ")
+	assert.Contains(t, readme, "`ENDPOINT_VAR_README_APP_KEY`",
+		"a sibling apiKey scheme's required env var belongs in the table")
+}

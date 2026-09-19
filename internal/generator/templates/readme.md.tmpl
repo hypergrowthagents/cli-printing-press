@@ -628,12 +628,18 @@ Environment variables:
 
 | Name | Kind | Required | Description |
 | --- | --- | --- | --- |
+{{- /* Use the resolver, not the conventional name: a spec-declared override
+     is what the generated config actually reads, so re-deriving it here
+     documented a variable nothing consults. */}}
 {{- range .EndpointTemplateVars}}
-| `{{envName $.Name}}_{{upper .}}` | endpoint | Yes |  |
+| `{{endpointTemplateEnvName .}}` | endpoint | Yes |  |
 {{- end}}
 {{- if .Auth.EnvVarSpecs}}
 {{- range .Auth.EnvVarSpecs}}
 | `{{.Name}}` | {{.Kind}} | {{if .Required}}Yes{{else}}No{{end}} | {{.MarkdownDescription}} |
+{{- end}}
+{{- range .Auth.AdditionalHeaders}}
+| `{{.EnvVar.Name}}` | {{.EnvVar.Kind}} | {{if .EnvVar.Required}}Yes{{else}}No{{end}} | {{.EnvVar.MarkdownDescription}} |
 {{- end}}
 {{- else}}
 {{- range .Auth.EnvVars}}

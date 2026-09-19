@@ -211,7 +211,7 @@ Verify: `claude mcp list`
 
 1. Check if installed: `which learn-disabled-example-pp-cli`
    If not found, offer to install (see Prerequisites at the top of this skill).
-2. Match the user query to the best command from the Unique Capabilities and Command Reference above.
+2. Match the user query to the best command from the Command Reference above.
 3. Execute with the `--agent` flag:
    ```bash
    learn-disabled-example-pp-cli <command> [subcommand] [args] --agent
