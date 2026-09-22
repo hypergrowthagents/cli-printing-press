@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/format"
 	"maps"
@@ -4507,8 +4508,18 @@ func (g *Generator) renderStoreFiles(schema []TableDef) error {
 		if err := g.renderTemplate("store.go.tmpl", filepath.Join("internal", "store", "store.go"), storeData); err != nil {
 			return fmt.Errorf("rendering store: %w", err)
 		}
-		if err := g.renderTemplate("store_extras.go.tmpl", filepath.Join("internal", "store", "extras.go"), storeData); err != nil {
-			return fmt.Errorf("rendering store extras: %w", err)
+		// extras.go invites hand-edited migrations ("Edit this file when adding
+		// tables for novel commands") and carries no DO NOT EDIT banner, so
+		// rendering it unconditionally destroyed exactly the work it asks for
+		// on the next --force, with no patch record to restore it. Scaffold it
+		// once and then leave it alone, the way novel-feature stubs do.
+		extrasPath := filepath.Join("internal", "store", "extras.go")
+		if _, err := os.Stat(filepath.Join(g.OutputDir, extrasPath)); errors.Is(err, os.ErrNotExist) {
+			if err := g.renderTemplate("store_extras.go.tmpl", extrasPath, storeData); err != nil {
+				return fmt.Errorf("rendering store extras: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("checking store extras: %w", err)
 		}
 		if err := g.renderTemplate("store_schema_version_test.go.tmpl", filepath.Join("internal", "store", "schema_version_test.go"), storeData); err != nil {
 			return fmt.Errorf("rendering store schema version test: %w", err)
