@@ -1614,7 +1614,14 @@ func runLiveDogfoodCommand(command liveDogfoodCommand, ctx resolveCtx) []LiveDog
 	helpResult := liveDogfoodResult(commandName, LiveDogfoodTestHelp, helpArgs, helpRun, ctx.authEnvValue)
 	helpPassed := helpRun.exitCode == 0
 	help := helpRun.stdout + helpRun.stderr
-	if helpPassed && extractExamplesSection(help) == "" {
+	// A command the generator marked as having no derivable example cannot be
+	// given one without shipping a --help entry that fails when run, so failing
+	// it here measures the API's shape rather than the print. A failed help
+	// check also skips that command's happy_path, json_fidelity and error_path,
+	// so on a wide CRUD CLI an unmeetable requirement here withdraws most of
+	// the matrix from live testing instead of merely reporting noise.
+	if helpPassed && extractExamplesSection(help) == "" &&
+		command.Annotations[noRunnableExampleAnnotation] != "true" {
 		helpPassed = false
 		helpResult.Status = LiveDogfoodStatusFail
 		helpResult.Reason = "missing Examples section"
