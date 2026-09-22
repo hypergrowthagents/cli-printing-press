@@ -374,14 +374,22 @@ and full resync. After archiving, use 'search' for instant full-text search.`,
 			}
 
 			if flags.asJSON {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				if err := enc.Encode(map[string]any{
+				summary := map[string]any{
 					"resources_synced": resourcesSynced,
 					"total_items":      totalSynced,
 					"store_path":       dbPath,
 					"timestamp":        time.Now().UTC().Format(time.RFC3339),
-				}); err != nil {
+				}
+				// Under --dry-run the walk previews requests and archives
+				// nothing; mark the envelope so it is not read as an empty
+				// archive.
+				if c.DryRun {
+					summary["dry_run"] = true
+					summary["action"] = "workflow archive"
+				}
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(summary); err != nil {
 					return err
 				}
 			} else if resourcesSynced > 0 || len(resources) == 0 {

@@ -311,7 +311,12 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 			// or otherwise bot-detected sites. By going through
 			// flags.newClient(), the doctor's
 			// reachability verdict matches what real commands experience.
-			if cfg != nil && cfg.BaseURL != "" {
+			if flags.dryRun {
+				// Under --dry-run the client answers every request with a
+				// preview sentinel, so a probe would report "reachable" for an
+				// API it never contacted. Report what actually happened.
+				report["api"] = "not checked (--dry-run: no request sent)"
+			} else if cfg != nil && cfg.BaseURL != "" {
 				c, clientErr := flags.newClient()
 				if clientErr != nil {
 					report["api"] = fmt.Sprintf("client init error: %s", clientErr)
@@ -392,6 +397,10 @@ func newDoctorCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			report["version"] = version
+			if flags.dryRun {
+				report["dry_run"] = true
+				report["action"] = "doctor"
+			}
 
 			if flags.asJSON {
 				if err := printJSONFiltered(cmd.OutOrStdout(), report, flags); err != nil {

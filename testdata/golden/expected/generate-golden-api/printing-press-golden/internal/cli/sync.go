@@ -399,14 +399,23 @@ Resource scoping:
 				}
 			}
 			if machineFormat {
-				if err := printJSONFiltered(cmd.OutOrStdout(), map[string]any{
+				summary := map[string]any{
 					"total_records": totalSynced,
 					"resources":     totalResources,
 					"success":       successCount,
 					"warned":        warnCount,
 					"errored":       errCount,
 					"duration_ms":   elapsed.Milliseconds(),
-				}, flags); err != nil {
+				}
+				// A --dry-run walk sends no requests and stores nothing, so the
+				// counts above describe a preview. Say so in the envelope, or a
+				// machine caller cannot tell a preview from a real sync that
+				// found zero records.
+				if c.DryRun {
+					summary["dry_run"] = true
+					summary["action"] = "sync"
+				}
+				if err := printJSONFiltered(cmd.OutOrStdout(), summary, flags); err != nil {
 					return err
 				}
 			}
