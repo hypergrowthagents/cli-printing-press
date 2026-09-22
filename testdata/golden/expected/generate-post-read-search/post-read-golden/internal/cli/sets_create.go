@@ -52,6 +52,14 @@ func newSetsCreateCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return classifyAPIError(cmd.OutOrStdout(), err, flags)
 			}
+			// A response the spec did not declare binary can still arrive as
+			// one (e.g. an attachment download with no declared content). The
+			// client wraps it in a base64 envelope; a file sink gets raw bytes.
+			if c.LastResponseWasBinary() {
+				if handled, derr := handleBinaryResponseDelivery(cmd, flags, data); handled {
+					return derr
+				}
+			}
 			// Inspect the mutate response body for a partial-failure-shaped
 			// field (e.g. Google Ads `partialFailureError`). Several Google
 			// APIs return 200 OK with a partial-failure field when some

@@ -30,6 +30,10 @@ func TestBinaryResponseHonorsDeliverAndDryRun(t *testing.T) {
 		case r.URL.Path == "/items" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`[{"id":"1"}]`))
+		case (r.URL.Path == "/attachments/42" || r.URL.Path == "/blob") && r.Method == http.MethodGet:
+			// Undeclared in the spec: only the live Content-Type says binary.
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write(payload)
 		case r.URL.Path == "/lookalike" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"_pp_binary":true,"encoding":"base64","data":"QUJDRA==","content_type":"application/pdf"}`))
@@ -106,6 +110,34 @@ func TestBinaryResponseHonorsDeliverAndDryRun(t *testing.T) {
 				},
 			},
 		},
+		"attachments": {
+			Description: "Attachments whose download declares no response content",
+			Endpoints: map[string]spec.Endpoint{
+				"list": {
+					Method:      http.MethodGet,
+					Path:        "/attachments",
+					Description: "List attachments",
+				},
+				"get": {
+					Method:      http.MethodGet,
+					Path:        "/attachments/{id}",
+					Description: "Download an attachment",
+					Params: []spec.Param{
+						{Name: "id", Type: "string", Required: true, Positional: true, Description: "Attachment id"},
+					},
+				},
+			},
+		},
+		"blob": {
+			Description: "Download a blob with no declared response content",
+			Endpoints: map[string]spec.Endpoint{
+				"get": {
+					Method:      http.MethodGet,
+					Path:        "/blob",
+					Description: "Download a blob",
+				},
+			},
+		},
 		"lookalike": {
 			Description: "JSON that resembles a binary envelope",
 			Endpoints: map[string]spec.Endpoint{
@@ -144,6 +176,10 @@ func TestBinaryResponseHonorsDeliverAndDryRun(t *testing.T) {
 
 	clientSrc := readGeneratedFile(t, outputDir, "internal", "client", "client.go")
 	require.Contains(t, clientSrc, `func UnwrapBinaryResponse(`)
+	require.Contains(t, clientSrc, `func (c *Client) LastResponseWasBinary() bool`)
+
+	undeclaredSrc := readGeneratedFile(t, outputDir, "internal", "cli", "attachments_get.go")
+	require.Contains(t, undeclaredSrc, `if c.LastResponseWasBinary() {`)
 
 	helpersSrc := readGeneratedFile(t, outputDir, "internal", "cli", "helpers.go")
 	require.Contains(t, helpersSrc, `writeBinaryDeliverReceipt(cmd.OutOrStdout()`)
@@ -260,6 +296,43 @@ func TestBinaryResponseHonorsDeliverAndDryRun(t *testing.T) {
 		require.NoError(t, readErr)
 		require.Contains(t, string(got), `"id"`)
 		require.NotEqual(t, payload, got)
+	})
+
+	t.Run("undeclared-binary-endpoint-deliver-writes-raw-bytes", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "attachment.pdf")
+		out, err := runGeneratedCLI(t, binaryPath, baseEnv, "attachments", "get", "42", "--deliver", "file:"+dest)
+		require.NoError(t, err, out)
+		got, readErr := os.ReadFile(dest)
+		require.NoError(t, readErr)
+		require.Equal(t, payload, got)
+		require.NotContains(t, string(got), `_pp_binary`)
+		receipt := decodeLastJSONObject(t, out)
+		require.Equal(t, true, receipt["delivered"])
+		require.Equal(t, float64(len(payload)), receipt["bytes"])
+	})
+
+	t.Run("undeclared-binary-endpoint-json-deliver-writes-raw-bytes", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "attachment.pdf")
+		out, err := runGeneratedCLI(t, binaryPath, baseEnv, "attachments", "get", "42", "--json", "--deliver", "file:"+dest)
+		require.NoError(t, err, out)
+		got, readErr := os.ReadFile(dest)
+		require.NoError(t, readErr)
+		require.Equal(t, payload, got)
+	})
+
+	t.Run("undeclared-binary-promoted-deliver-writes-raw-bytes", func(t *testing.T) {
+		dest := filepath.Join(t.TempDir(), "blob.pdf")
+		out, err := runGeneratedCLI(t, binaryPath, baseEnv, "blob", "--deliver", "file:"+dest)
+		require.NoError(t, err, out)
+		got, readErr := os.ReadFile(dest)
+		require.NoError(t, readErr)
+		require.Equal(t, payload, got)
+	})
+
+	t.Run("undeclared-binary-endpoint-stdout-keeps-envelope", func(t *testing.T) {
+		out, err := runGeneratedCLI(t, binaryPath, baseEnv, "attachments", "get", "42", "--json")
+		require.NoError(t, err, out)
+		require.Contains(t, out, `_pp_binary`)
 	})
 
 	t.Run("json-lookalike-envelope-is-not-decoded", func(t *testing.T) {

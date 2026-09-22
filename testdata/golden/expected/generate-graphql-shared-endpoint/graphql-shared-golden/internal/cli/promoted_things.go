@@ -57,6 +57,14 @@ func newThingsPromotedCmd(flags *rootFlags) *cobra.Command {
 				}
 				return nil
 			}
+			// A response the spec did not declare binary can still arrive as
+			// one (e.g. an attachment download with no declared content). The
+			// client wraps it in a base64 envelope; a file sink gets raw bytes.
+			if c.LastResponseWasBinary() {
+				if handled, derr := handleBinaryResponseDelivery(cmd, flags, data); handled {
+					return derr
+				}
+			}
 			outputData := data
 			if wantsHumanTable(cmd.OutOrStdout(), flags) {
 				var items []map[string]any

@@ -55,6 +55,10 @@ type Client struct {
 	platformLimiterMu sync.Mutex
 	platformLimiters  map[string]*platform.EndpointLimiter
 	platformBudgets   map[string]platform.EndpointBudget
+	// lastResponseBinary records that the most recent live response carried a
+	// binary Content-Type and was returned as a base64 envelope. Endpoints the
+	// spec never declared binary rely on it to deliver raw bytes to a file.
+	lastResponseBinary bool
 }
 
 func (c *Client) IsDryRun() bool {
@@ -369,6 +373,7 @@ func (c *Client) GetWithHeaders(ctx context.Context, path string, params map[str
 	}
 	binaryResponse := c.wantsBinaryResponse(headers)
 	cacheEnabled := c.responseCacheEnabled(binaryResponse)
+	c.lastResponseBinary = false
 	// Check cache for GET requests
 	if cacheEnabled {
 		if cached, ok := c.readCacheWithHeaders(path, params, headers); ok {
@@ -376,7 +381,7 @@ func (c *Client) GetWithHeaders(ctx context.Context, path string, params map[str
 		}
 	}
 	result, _, err := c.do(ctx, "GET", path, params, nil, headers)
-	if err == nil && cacheEnabled {
+	if err == nil && cacheEnabled && !c.lastResponseBinary {
 		c.writeCacheWithHeaders(path, params, headers, result)
 	}
 	return result, err
@@ -417,7 +422,7 @@ func (c *Client) GetNoCache(ctx context.Context, path string, params map[string]
 func (c *Client) GetWithHeadersNoCache(ctx context.Context, path string, params map[string]string, headers map[string]string) (json.RawMessage, error) {
 	binaryResponse := c.wantsBinaryResponse(headers)
 	result, _, err := c.do(ctx, "GET", path, params, nil, headers)
-	if err == nil && c.responseCacheEnabled(binaryResponse) {
+	if err == nil && c.responseCacheEnabled(binaryResponse) && !c.lastResponseBinary {
 		c.writeCacheWithHeaders(path, params, headers, result)
 	}
 	return result, err
@@ -1132,6 +1137,7 @@ func (c *Client) doMutation(ctx context.Context, method, path string, params map
 // mutationIntent extends that gate to GET action endpoints whose wire method
 // is not itself a mutating verb.
 func (c *Client) doInternal(ctx context.Context, method, path string, params map[string]string, body any, headerOverrides map[string]string, readOnlyIntent bool, mutationIntent bool) (json.RawMessage, int, error) {
+	c.lastResponseBinary = false
 	// Verify-mode transport-layer gate. When the verifier (or any consumer
 	// that sets PRINTING_PRESS_VERIFY=1) drives a mutating verb or explicit
 	// mutation intent without the LIVE_HTTP=1 opt-in, return a synthetic
@@ -1374,6 +1380,7 @@ func (c *Client) doInternal(ctx context.Context, method, path string, params map
 				if encErr != nil {
 					return nil, 0, encErr
 				}
+				c.lastResponseBinary = true
 				return env, resp.StatusCode, nil
 			}
 			if !htmlResponse {
@@ -1654,6 +1661,13 @@ func wrapBinaryResponse(ct string, body []byte) (json.RawMessage, error) {
 		return nil, fmt.Errorf("encoding binary response: %w", err)
 	}
 	return json.RawMessage(out), nil
+}
+
+// LastResponseWasBinary reports whether the most recent live response was a
+// binary body wrapped by wrapBinaryResponse. Unlike a check on the payload's
+// field names, it cannot mistake an ordinary JSON object for media.
+func (c *Client) LastResponseWasBinary() bool {
+	return c != nil && c.lastResponseBinary
 }
 
 // UnwrapBinaryResponse recovers original bytes from wrapBinaryResponse's JSON
