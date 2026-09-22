@@ -49,6 +49,7 @@ const reasonDestructiveAtAuth = "destructive-at-auth"
 const reasonMutatingDryRunOnly = "mutating command dry-run only"
 const reasonMutatingErrorPath = "mutating command; error_path would call live API without --dry-run"
 const reasonMutatingRequiresAllowDestructive = "mutating command requires --allow-destructive"
+const reasonMissingRunnableExample = "missing runnable example"
 const reasonMutatingRunnableFixture = "blocked-fixture: mutating command requires runnable example"
 const reasonSyncDryRunRequired = "sync command requires --dry-run"
 const reasonUnclassifiedNoMethod = "unclassified: no pp:method"
@@ -1614,14 +1615,8 @@ func runLiveDogfoodCommand(command liveDogfoodCommand, ctx resolveCtx) []LiveDog
 	helpResult := liveDogfoodResult(commandName, LiveDogfoodTestHelp, helpArgs, helpRun, ctx.authEnvValue)
 	helpPassed := helpRun.exitCode == 0
 	help := helpRun.stdout + helpRun.stderr
-	// A command the generator marked as having no derivable example cannot be
-	// given one without shipping a --help entry that fails when run, so failing
-	// it here measures the API's shape rather than the print. A failed help
-	// check also skips that command's happy_path, json_fidelity and error_path,
-	// so on a wide CRUD CLI an unmeetable requirement here withdraws most of
-	// the matrix from live testing instead of merely reporting noise.
 	if helpPassed && extractExamplesSection(help) == "" &&
-		command.Annotations[noRunnableExampleAnnotation] != "true" {
+		liveDogfoodHelpRequiresExamples(command.Annotations) {
 		helpPassed = false
 		helpResult.Status = LiveDogfoodStatusFail
 		helpResult.Reason = "missing Examples section"
@@ -1742,11 +1737,11 @@ func runLiveDogfoodCommand(command liveDogfoodCommand, ctx resolveCtx) []LiveDog
 			return results
 		}
 		results = append(results,
-			failedLiveDogfoodResult(commandName, LiveDogfoodTestHappy, command.Path, "missing runnable example"),
-			skippedLiveDogfoodResult(commandName, LiveDogfoodTestJSON, "missing runnable example"),
-			skippedLiveDogfoodResult(commandName, LiveDogfoodTestError, "missing runnable example"),
+			happyPathResultForMissingExample(commandName, command.Annotations, command.Path),
+			skippedLiveDogfoodResult(commandName, LiveDogfoodTestJSON, reasonMissingRunnableExample),
+			skippedLiveDogfoodResult(commandName, LiveDogfoodTestError, reasonMissingRunnableExample),
 		)
-		appendDryRunJSON(nil, false, stdinPayload, "missing runnable example")
+		appendDryRunJSON(nil, false, stdinPayload, reasonMissingRunnableExample)
 		return results
 	}
 
@@ -2218,6 +2213,32 @@ func boundedLiveDogfoodOutput(parts ...string) string {
 		remaining -= len(part)
 	}
 	return combined.String()
+}
+
+// liveDogfoodHelpRequiresExamples reports whether the help check holds a
+// command to having an Examples section. A command the generator marked as
+// having no derivable example cannot be given one without shipping a --help
+// entry that fails when run, so failing it here measures the API's shape rather
+// than the print. A failed help check also skips that command's happy_path,
+// json_fidelity and error_path, so on a wide CRUD CLI an unmeetable requirement
+// here withdraws most of the matrix from live testing instead of merely
+// reporting noise.
+func liveDogfoodHelpRequiresExamples(annotations map[string]string) bool {
+	return annotations[noRunnableExampleAnnotation] != "true"
+}
+
+// happyPathResultForMissingExample decides whether a command with no runnable
+// example fails its happy path or is excluded from it. A command the generator
+// marked as having no derivable example has no happy path to run, so failing it
+// scores the API's shape — how many endpoints need an id the matrix cannot know
+// — rather than the print. The mutating branch skips for exactly this reason; a
+// read deserves the same. A read merely missing an example it should have had
+// carries no annotation and still fails.
+func happyPathResultForMissingExample(command string, annotations map[string]string, args []string) LiveDogfoodTestResult {
+	if annotations[noRunnableExampleAnnotation] == "true" {
+		return skippedLiveDogfoodResult(command, LiveDogfoodTestHappy, reasonMissingRunnableExample)
+	}
+	return failedLiveDogfoodResult(command, LiveDogfoodTestHappy, args, reasonMissingRunnableExample)
 }
 
 func failedLiveDogfoodResult(command string, kind LiveDogfoodTestKind, args []string, reason string) LiveDogfoodTestResult {

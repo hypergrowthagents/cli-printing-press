@@ -2460,8 +2460,23 @@ func TestRunLiveDogfoodSkipsMutatingCommandsWithoutRunnableExample(t *testing.T)
 
 	detailsHappy := findResultByCommandKind(report, "reports details", LiveDogfoodTestHappy)
 	require.NotNil(t, detailsHappy, "expected reports details happy_path result")
-	assert.Equal(t, LiveDogfoodStatusFail, detailsHappy.Status)
-	assert.Equal(t, "missing runnable example", detailsHappy.Reason)
+	assert.Equal(t, LiveDogfoodStatusFail, detailsHappy.Status,
+		"a read merely missing an example it could have had is still a finding")
+	assert.Equal(t, reasonMissingRunnableExample, detailsHappy.Reason)
+
+	// A get-by-id read the generator marked as having no derivable example:
+	// same condition as the mutating command above, so the same verdict.
+	byIDHelp := findResultByCommandKind(report, "reports by-id", LiveDogfoodTestHelp)
+	require.NotNil(t, byIDHelp, "expected reports by-id help result")
+	assert.Equal(t, LiveDogfoodStatusPass, byIDHelp.Status,
+		"no Examples section is expected on a command marked pp:no-runnable-example")
+
+	for _, kind := range []LiveDogfoodTestKind{LiveDogfoodTestHappy, LiveDogfoodTestJSON, LiveDogfoodTestError} {
+		got := findResultByCommandKind(report, "reports by-id", kind)
+		require.NotNil(t, got, "expected reports by-id %s result", kind)
+		assert.Equal(t, LiveDogfoodStatusSkip, got.Status, "reports by-id %s", kind)
+		assert.Equal(t, reasonMissingRunnableExample, got.Reason, "reports by-id %s", kind)
+	}
 }
 
 func TestRunLiveDogfoodKeepsOrdinary4xxFailures(t *testing.T) {
@@ -2666,11 +2681,25 @@ if [ "$1" = "agent-context" ]; then
       {"name":"update","annotations":{"pp:method":"PUT"}}
     ]},
     {"name":"reports","subcommands":[
-      {"name":"details","annotations":{"pp:method":"GET"}}
+      {"name":"details","annotations":{"pp:method":"GET"}},
+      {"name":"by-id","annotations":{"pp:method":"GET","pp:no-runnable-example":"true"}}
     ]}
   ]
 }
 JSON
+  exit 0
+fi
+
+if [ "$1" = "reports" ] && [ "$2" = "by-id" ] && [ "${3:-}" = "--help" ]; then
+  cat <<'HELP'
+Read one report by id.
+
+Usage:
+  fixture-pp-cli reports by-id <id> [flags]
+
+Flags:
+      --json    Output JSON
+HELP
   exit 0
 fi
 
