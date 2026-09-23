@@ -362,7 +362,21 @@ func (c *Config) CredentialConfigured() bool {
 	if c == nil {
 		return false
 	}
-	return c.AuthHeader() != ""
+	if c.AuthHeader() != "" {
+		return true
+	}
+	// Client-credentials CLIs mint the access token on demand (and may keep it
+	// in memory only), so the client id and secret the mint would use are a
+	// complete credential before the first mint. Mirrors
+	// resolveClientCredentials in the client.
+	id, secret := c.ClientID, c.ClientSecret
+	if id == "" {
+		id = cliutil.EnvOverride("PRINTING_PRESS_OAUTH2_CLIENT_ID")
+	}
+	if secret == "" {
+		secret = cliutil.EnvOverride("PRINTING_PRESS_OAUTH2_CLIENT_SECRET")
+	}
+	return id != "" && secret != ""
 }
 
 func (c *Config) AgentcookieManagedByExternalStore() bool {

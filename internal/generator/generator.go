@@ -1804,15 +1804,12 @@ func requestAuthEnvVars(auth spec.AuthConfig) []spec.AuthEnvVar {
 	return out
 }
 
-// authFlowInputEnvVarNames lists the env vars a token flow consumes (for
-// example an OAuth2 client id and secret), in declaration order.
-func authFlowInputEnvVarNames(auth spec.AuthConfig) []string {
-	auth.NormalizeEnvVarSpecs("")
+// clientCredentialsEnvVarNames names the env vars the client-credentials
+// mint reads (client id, then secret), matching resolveClientCredentials.
+func clientCredentialsEnvVarNames(auth spec.AuthConfig) []string {
 	var out []string
-	for _, envVar := range auth.EnvVarSpecs {
-		if envVar.EffectiveKind() == spec.AuthEnvVarKindAuthFlowInput {
-			out = append(out, envVar.Name)
-		}
+	for _, envVar := range clientCredentialsEnvVars(auth) {
+		out = append(out, envVar.Name)
 	}
 	return out
 }
@@ -2024,7 +2021,7 @@ func authSetupHint(auth spec.AuthConfig, cliName string) string {
 		// authTemplatesWithoutSetupCommand): their credentials are token-flow
 		// inputs, not request credentials, so name those instead.
 		if auth.EffectiveOAuth2Grant() == spec.OAuth2GrantClientCredentials && auth.TokenURL != "" {
-			if names := authFlowInputEnvVarNames(auth); len(names) > 0 {
+			if names := clientCredentialsEnvVarNames(auth); len(names) > 0 {
 				return fmt.Sprintf("Set %s; the CLI mints its own access token.", joinEnvVarNames(names))
 			}
 		}

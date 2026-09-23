@@ -1082,6 +1082,27 @@ func (c *Config) CredentialConfigured() bool {
 	}
 {{- if or (eq .Auth.Type "composed") (eq .Auth.Type "cookie")}}
 	return c.AuthHeader() != "" || c.CookieCredential() != ""
+{{- else if and .HasAuthCommand (eq .Auth.EffectiveOAuth2Grant "client_credentials")}}
+{{- $ccEnvVars := clientCredentialsEnvVars .Auth}}
+	if c.AuthHeader() != "" {
+		return true
+	}
+	// Client-credentials CLIs mint the access token on demand (and may keep it
+	// in memory only), so the client id and secret the mint would use are a
+	// complete credential before the first mint. Mirrors
+	// resolveClientCredentials in the client.
+	id, secret := c.ClientID, c.ClientSecret
+{{- if $ccEnvVars}}
+	if id == "" {
+		id = cliutil.EnvOverride("{{(index $ccEnvVars 0).Name}}")
+	}
+{{- if gt (len $ccEnvVars) 1}}
+	if secret == "" {
+		secret = cliutil.EnvOverride("{{(index $ccEnvVars 1).Name}}")
+	}
+{{- end}}
+{{- end}}
+	return id != "" && secret != ""
 {{- else}}
 	return c.AuthHeader() != ""
 {{- end}}

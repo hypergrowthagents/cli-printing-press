@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -261,4 +262,42 @@ func TestRuntimeAuthHintsOmitAuthSetupForClientCredentials(t *testing.T) {
 		assert.NotContains(t, src, "auth setup' for credential setup steps", filepath.Join(rel...))
 		assert.Contains(t, src, want, filepath.Join(rel...))
 	}
+}
+
+// Before the first mint a client-credentials CLI holds no access token, so a
+// header-only check made doctor report "not configured" while every command
+// authenticated fine.
+func TestClientCredentialsCountAsConfiguredBeforeFirstMint(t *testing.T) {
+	t.Parallel()
+
+	apiSpec := minimalSpec("cc-configured")
+	apiSpec.Auth = spec.AuthConfig{
+		Type:        "bearer_token",
+		OAuth2Grant: spec.OAuth2GrantClientCredentials,
+		TokenURL:    "https://auth.example.com/connect/token",
+		EnvVarSpecs: []spec.AuthEnvVar{
+			{Name: "CC_CONFIGURED_CLIENT_ID", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: false, Sensitive: false},
+			{Name: "CC_CONFIGURED_CLIENT_SECRET", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: false, Sensitive: true},
+		},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), naming.CLI(apiSpec.Name))
+	require.NoError(t, New(apiSpec, outputDir).Generate())
+	requireGeneratedCompiles(t, outputDir)
+
+	cfgSrc := readGeneratedFile(t, outputDir, "internal", "config", "config.go")
+	assert.Contains(t, cfgSrc, `id = cliutil.EnvOverride("CC_CONFIGURED_CLIENT_ID")`)
+	assert.Contains(t, cfgSrc, `secret = cliutil.EnvOverride("CC_CONFIGURED_CLIENT_SECRET")`)
+
+	binaryPath := filepath.Join(outputDir, naming.CLI(apiSpec.Name))
+	runGoCommand(t, outputDir, "build", "-o", binaryPath, "./cmd/"+naming.CLI(apiSpec.Name))
+	env := append(os.Environ(),
+		"HOME="+t.TempDir(),
+		"CC_CONFIGURED_CLIENT_ID=id",
+		"CC_CONFIGURED_CLIENT_SECRET=secret",
+		"CC_CONFIGURED_BASE_URL=http://127.0.0.1:1",
+	)
+	out, _ := runGeneratedCLI(t, binaryPath, env, "doctor", "--json")
+	assert.NotContains(t, out, `"auth": "not configured"`, out)
+	assert.NotContains(t, out, `"auth":"not configured"`, out)
 }
