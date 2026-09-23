@@ -1804,6 +1804,30 @@ func requestAuthEnvVars(auth spec.AuthConfig) []spec.AuthEnvVar {
 	return out
 }
 
+// authFlowInputEnvVarNames lists the env vars a token flow consumes (for
+// example an OAuth2 client id and secret), in declaration order.
+func authFlowInputEnvVarNames(auth spec.AuthConfig) []string {
+	auth.NormalizeEnvVarSpecs("")
+	var out []string
+	for _, envVar := range auth.EnvVarSpecs {
+		if envVar.EffectiveKind() == spec.AuthEnvVarKindAuthFlowInput {
+			out = append(out, envVar.Name)
+		}
+	}
+	return out
+}
+
+// joinEnvVarNames renders ["A","B","C"] as "A, B and C".
+func joinEnvVarNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
 func requiredRequestAuthEnvVars(auth spec.AuthConfig) []spec.AuthEnvVar {
 	envVars := requestAuthEnvVars(auth)
 	out := make([]spec.AuthEnvVar, 0, len(envVars))
@@ -1996,6 +2020,14 @@ func authSetupHint(auth spec.AuthConfig, cliName string) string {
 		}
 	}
 	if len(envVars) == 0 {
+		// Client-credentials CLIs emit no `auth setup` subcommand (see
+		// authTemplatesWithoutSetupCommand): their credentials are token-flow
+		// inputs, not request credentials, so name those instead.
+		if auth.EffectiveOAuth2Grant() == spec.OAuth2GrantClientCredentials && auth.TokenURL != "" {
+			if names := authFlowInputEnvVarNames(auth); len(names) > 0 {
+				return fmt.Sprintf("Set %s; the CLI mints its own access token.", joinEnvVarNames(names))
+			}
+		}
 		return fmt.Sprintf("Run '%s-pp-cli auth setup' for credential setup steps.", cliName)
 	}
 

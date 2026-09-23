@@ -227,3 +227,38 @@ func TestReadmeEnvTableUsesTheResolvedEndpointEnvName(t *testing.T) {
 	assert.Contains(t, readme, "`ENDPOINT_VAR_README_APP_KEY`",
 		"a sibling apiKey scheme's required env var belongs in the table")
 }
+
+// The same drift survived in the runtime hints: doctor, the auth-error
+// remediation and the MCP error text still told client-credentials users to
+// run the missing `auth setup`. They must name the token-flow inputs instead.
+func TestRuntimeAuthHintsOmitAuthSetupForClientCredentials(t *testing.T) {
+	t.Parallel()
+
+	apiSpec := minimalSpec("cc-auth-hint")
+	apiSpec.Auth = spec.AuthConfig{
+		Type:        "bearer_token",
+		OAuth2Grant: spec.OAuth2GrantClientCredentials,
+		TokenURL:    "https://auth.example.com/connect/token",
+		EnvVarSpecs: []spec.AuthEnvVar{
+			{Name: "CC_AUTH_HINT_CLIENT_ID", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: false, Sensitive: false},
+			{Name: "CC_AUTH_HINT_CLIENT_SECRET", Kind: spec.AuthEnvVarKindAuthFlowInput, Required: false, Sensitive: true},
+		},
+	}
+
+	outputDir := filepath.Join(t.TempDir(), naming.CLI(apiSpec.Name))
+	gen := New(apiSpec, outputDir)
+	gen.VisionSet = VisionTemplateSet{MCP: true}
+	require.NoError(t, gen.Generate())
+	requireGeneratedCompiles(t, outputDir)
+
+	want := "Set CC_AUTH_HINT_CLIENT_ID and CC_AUTH_HINT_CLIENT_SECRET; the CLI mints its own access token."
+	for _, rel := range [][]string{
+		{"internal", "cli", "doctor.go"},
+		{"internal", "cli", "helpers.go"},
+		{"internal", "mcp", "tools.go"},
+	} {
+		src := readGeneratedFile(t, outputDir, rel...)
+		assert.NotContains(t, src, "auth setup' for credential setup steps", filepath.Join(rel...))
+		assert.Contains(t, src, want, filepath.Join(rel...))
+	}
+}
