@@ -303,6 +303,8 @@ func New(s *spec.APISpec, outputDir string) *Generator {
 		"basicAuthEnvVars":                    basicAuthEnvVars,
 		"basicAuthAppendsColonForSingleToken": basicAuthAppendsColonForSingleToken,
 		"clientCredentialsEnvVars":            clientCredentialsEnvVars,
+		"mcpAuthEnvVarNames":                  mcpAuthEnvVarNames,
+		"joinEnvVarNames":                     joinEnvVarNames,
 		"deviceCodeEnvVars":                   deviceCodeEnvVars,
 		"clientCredentialsScope":              clientCredentialsScope,
 		"clientCredentialsScopeUsesClientID":  clientCredentialsScopeUsesClientID,
@@ -1799,6 +1801,36 @@ func requestAuthEnvVars(auth spec.AuthConfig) []spec.AuthEnvVar {
 	for _, envVar := range auth.EnvVarSpecs {
 		if envVar.IsRequestCredential() {
 			out = append(out, envVar)
+		}
+	}
+	return out
+}
+
+// mcpAuthEnvVarNames lists the credential env vars an MCP host must supply for
+// the generated binary to authenticate: the client-credentials inputs (or the
+// single canonical credential for other flows) plus every required sibling
+// header credential, such as an app key. Alternative credentials of an
+// either-or scheme are left out; the host needs only one of them. The README's
+// manual MCP config uses it so a copied host config actually authenticates.
+func mcpAuthEnvVarNames(auth spec.AuthConfig) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	if ccNames := clientCredentialsEnvVarNames(auth); len(ccNames) > 0 {
+		for _, name := range ccNames {
+			add(name)
+		}
+	} else if canonical := auth.CanonicalEnvVar(); canonical != nil {
+		add(canonical.Name)
+	}
+	for _, header := range auth.AdditionalHeaders {
+		if header.EnvVar.Required {
+			add(header.EnvVar.Name)
 		}
 	}
 	return out

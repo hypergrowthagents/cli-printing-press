@@ -224,7 +224,24 @@ func Load(configPath string) (*Config, error) {
 	if v := cliutil.EnvOverride("PRINTING_PRESS_OAUTH2_TOKEN_URL"); v != "" {
 		cfg.TokenURL = v
 	}
+	for _, hook := range loadHooks {
+		if err := hook(cfg); err != nil {
+			return nil, err
+		}
+	}
 	return cfg, nil
+}
+
+// loadHooks run at the end of Load, after the config file, profile and env
+// overrides have merged. Hand-owned files in this package register them from
+// init() to validate or adjust the resolved config without editing this
+// generated file, so the customization survives regeneration.
+var loadHooks []func(*Config) error
+
+// RegisterLoadHook adds a hook that runs at the end of Load. A hook error
+// aborts Load.
+func RegisterLoadHook(hook func(*Config) error) {
+	loadHooks = append(loadHooks, hook)
 }
 
 func resolveConfigPath(configPath string) (string, bool, error) {

@@ -1053,6 +1053,16 @@ func (c *Client) doInternal(ctx context.Context, method, path string, params map
 	if !readOnlyIntent && (mutationIntent || isMutatingVerb(method)) && cliutil.IsVerifyEnv() && !cliutil.IsVerifyLiveHTTPEnv() {
 		return verifyShortCircuitEnvelope(method, path), http.StatusOK, nil
 	}
+	// Request gates run before auth and dialing, so a refused request never
+	// mints a token. --dry-run sends nothing and is not gated.
+	if !c.DryRun {
+		info := RequestInfo{Method: method, Path: path, BaseURL: c.BaseURL, MutationIntent: mutationIntent, ReadOnlyIntent: readOnlyIntent}
+		for _, gate := range requestGates {
+			if err := gate(info); err != nil {
+				return nil, 0, err
+			}
+		}
+	}
 	if err := rejectUnresolvedPathParams(path, nil); err != nil {
 		return nil, 0, err
 	}
@@ -1632,7 +1642,9 @@ func (c *Client) mintClientCredentials(ctx context.Context, clientID, clientSecr
 		expiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 	}
 	c.Config.AuthHeaderVal = "" // force AuthHeader() to use the new AccessToken path
-	if err := c.Config.SaveTokens(clientID, clientSecret, tokenResp.AccessToken, "", expiry); err != nil {
+	if mintedTokenSink != nil {
+		mintedTokenSink(c.Config, tokenResp.AccessToken, expiry)
+	} else if err := c.Config.SaveTokens(clientID, clientSecret, tokenResp.AccessToken, "", expiry); err != nil {
 		return fmt.Errorf("saving minted token: %w", err)
 	}
 	if c.ccMintedUnknownExpiry == nil {
@@ -1711,6 +1723,37 @@ func (c *Client) refreshAccessToken(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// RequestInfo describes an outgoing request to a RequestGate.
+type RequestInfo struct {
+	Method         string
+	Path           string
+	BaseURL        string
+	MutationIntent bool
+	ReadOnlyIntent bool
+}
+
+// RequestGate may refuse a request before auth or dialing by returning an
+// error. Hand-owned files in this package register gates from init() so the
+// policy survives regeneration without editing this generated file.
+type RequestGate func(RequestInfo) error
+
+var requestGates []RequestGate
+
+// RegisterRequestGate adds a gate consulted for every non-dry-run request.
+func RegisterRequestGate(gate RequestGate) {
+	requestGates = append(requestGates, gate)
+}
+
+// mintedTokenSink, when set from a hand-owned file, receives each
+// client_credentials access token instead of Config.SaveTokens, e.g. to keep
+// tokens in memory only. Nil keeps the default persistence.
+var mintedTokenSink func(cfg *config.Config, accessToken string, expiry time.Time)
+
+// SetMintedTokenSink replaces how minted client_credentials tokens are stored.
+func SetMintedTokenSink(sink func(cfg *config.Config, accessToken string, expiry time.Time)) {
+	mintedTokenSink = sink
 }
 
 // binaryResponseEnvelope wraps a non-textual success body so it survives the

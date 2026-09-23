@@ -157,7 +157,12 @@ To install:
 1. Download the `.mcpb` for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/{{.Name}}-current).
 2. Double-click the `.mcpb` file. Claude Desktop opens and walks you through the install.
 {{- if and $canonicalEnvVar (ne .Auth.Type "none") (ne .Auth.Type "cookie") (ne .Auth.Type "composed")}}
+{{- $mcpEnvNames := mcpAuthEnvVarNames .Auth}}
+{{- if gt (len $mcpEnvNames) 1}}
+3. Fill in {{range $i, $n := $mcpEnvNames}}{{if $i}}{{if eq (len (slice $mcpEnvNames $i)) 1}} and {{else}}, {{end}}{{end}}`{{$n}}`{{end}} when Claude Desktop prompts you.
+{{- else}}
 3. Fill in `{{$canonicalEnvVar.Name}}` when Claude Desktop prompts you.
+{{- end}}
 {{- end}}
 
 Requires Claude Desktop 1.0.0 or later. Pre-built bundles ship for macOS Apple Silicon (`darwin-arm64`) and Windows (`amd64`, `arm64`); for other platforms, use the manual config below.
@@ -184,9 +189,16 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
       "command": "{{.Name}}-pp-mcp"{{- if and $canonicalEnvVar (ne .Auth.Type "none") (ne .Auth.Type "cookie") (ne .Auth.Type "composed")}},
       "env": {
 {{- range .EndpointTemplateVars}}
-        "{{envName $.Name}}_{{upper .}}": "{{if eq . "shop"}}<your-store>.myshopify.com{{else if eq . "api_version"}}{{$.Version}}{{else}}<{{.}}>{{end}}",
+        "{{endpointTemplateEnvName .}}": "{{if eq . "shop"}}<your-store>.myshopify.com{{else if eq . "api_version"}}{{$.Version}}{{else}}<{{.}}>{{end}}",
 {{- end}}
+{{- $mcpEnvNames := mcpAuthEnvVarNames .Auth}}
+{{- if gt (len $mcpEnvNames) 1}}
+{{- range $i, $n := $mcpEnvNames}}
+        "{{$n}}": "<{{lower $n}}>"{{if lt (add $i 1) (len $mcpEnvNames)}},{{end}}
+{{- end}}
+{{- else}}
         "{{$canonicalEnvVar.Name}}": "<your-key>"
+{{- end}}
       }{{- end}}
     }
   }
